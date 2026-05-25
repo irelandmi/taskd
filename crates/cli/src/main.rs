@@ -138,6 +138,13 @@ enum TaskCmd {
 	Done {
 		id: String,
 	},
+	Log {
+		id: String,
+		message: String,
+	},
+	Events {
+		id: String,
+	},
 	Delete {
 		id: String,
 	},
@@ -346,6 +353,20 @@ fn run(db: &Database, cmd: Commands) -> taskd_core::error::Result<()> {
 			TaskCmd::Done { id } => {
 				db.update_task(&id, UpdateTask { status: Some("done".into()), ..Default::default() })?;
 				println!("done");
+			}
+			TaskCmd::Log { id, message } => {
+				let evt = db.log_event(&id, "comment", &message, "{}")?;
+				println!("logged comment on {} ({})", id, evt.id);
+			}
+			TaskCmd::Events { id } => {
+				let events = db.list_task_events(&id)?;
+				if events.is_empty() {
+					println!("no events");
+				} else {
+					for evt in events {
+						println!("[{}] {}: {}", evt.created_at, evt.kind, evt.message);
+					}
+				}
 			}
 			TaskCmd::Delete { id } => {
 				db.delete_task(&id)?;

@@ -328,7 +328,9 @@ impl Database {
 			let _ = self.conn.execute_batch("ROLLBACK");
 		}
 		result?;
-		self.get_task(&id)
+		let task = self.get_task(&id)?;
+		self.log_event(&task.id, "created", &format!("created {} '{}'", task.kind, task.title), "{}")?;
+		Ok(task)
 	}
 
 	pub fn get_task(&self, id: &str) -> Result<Task> {
@@ -356,19 +358,39 @@ impl Database {
 
 	pub fn update_task(&self, id: &str, input: UpdateTask) -> Result<Task> {
 		let task = self.get_task(id)?;
+		let old_status = task.status.clone();
+		let old_assignee = task.assignee.clone();
 		let title = input.title.unwrap_or(task.title);
 		let description = input.description.unwrap_or(task.description);
 		let epic_id = input.epic_id.unwrap_or(task.epic_id);
-		let status = input.status.unwrap_or(task.status);
+		let status = input.status.unwrap_or(old_status.clone());
 		let priority = input.priority.unwrap_or(task.priority);
 		let kind = input.kind.unwrap_or(task.kind);
-		let assignee = if input.assignee.is_some() { input.assignee } else { task.assignee };
+		let assignee = if input.assignee.is_some() { input.assignee } else { old_assignee.clone() };
 		let ts = now();
 		self.conn.execute(
 			"UPDATE tasks SET title = ?1, description = ?2, epic_id = ?3, status = ?4, priority = ?5, assignee = ?6, kind = ?7, updated_at = ?8 WHERE id = ?9",
 			params![title, description, epic_id, status, priority, assignee, kind, ts, task.id],
 		)?;
-		self.get_task(&task.id)
+		let updated = self.get_task(&task.id)?;
+		if updated.status != old_status {
+			self.log_event(&task.id, "status_change",
+				&format!("{} → {}", old_status, updated.status),
+				&format!("{{\"from\":\"{old_status}\",\"to\":\"{}\"}}", updated.status),
+			)?;
+		}
+		if updated.assignee != old_assignee {
+			let msg = match (&old_assignee, &updated.assignee) {
+				(None, Some(a)) => format!("assigned to {a}"),
+				(Some(_), None) => "unassigned".to_string(),
+				(Some(a), Some(b)) => format!("reassigned {a} → {b}"),
+				_ => String::new(),
+			};
+			if !msg.is_empty() {
+				self.log_event(&task.id, "assigned", &msg, "{}")?;
+			}
+		}
+		Ok(updated)
 	}
 
 	pub fn delete_task(&self, id: &str) -> Result<()> {
@@ -458,6 +480,50 @@ impl Database {
 		let label = self.get_label(id)?;
 		self.conn.execute("DELETE FROM labels WHERE id = ?1", params![label.id])?;
 		Ok(())
+	}
+
+	// --- Task Events ---
+
+	pub fn log_event(&self, task_id: &str, kind: &str, message: &str, meta: &str) -> Result<TaskEvent> {
+		let task = self.get_task(task_id)?;
+		let id = new_id();
+		let ts = now();
+		self.conn.execute(
+			"INSERT INTO task_events (id, task_id, kind, message, meta, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+			params![id, task.id, kind, message, meta, ts],
+		)?;
+		self.conn
+			.query_row(
+				"SELECT id, task_id, kind, message, meta, created_at FROM task_events WHERE id = ?1",
+				params![id],
+				|row| Ok(TaskEvent {
+					id: row.get(0)?,
+					task_id: row.get(1)?,
+					kind: row.get(2)?,
+					message: row.get(3)?,
+					meta: row.get(4)?,
+					created_at: row.get(5)?,
+				}),
+			)
+			.map_err(|_| Error::NotFound(format!("task_event {id}")))
+	}
+
+	pub fn list_task_events(&self, task_id: &str) -> Result<Vec<TaskEvent>> {
+		let task = self.get_task(task_id)?;
+		let mut stmt = self.conn.prepare(
+			"SELECT id, task_id, kind, message, meta, created_at FROM task_events WHERE task_id = ?1 ORDER BY created_at",
+		)?;
+		let rows = stmt.query_map(params![task.id], |row| {
+			Ok(TaskEvent {
+				id: row.get(0)?,
+				task_id: row.get(1)?,
+				kind: row.get(2)?,
+				message: row.get(3)?,
+				meta: row.get(4)?,
+				created_at: row.get(5)?,
+			})
+		})?;
+		rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
 	}
 
 	fn get_task_labels(&self, task_id: &str) -> Result<Vec<Label>> {

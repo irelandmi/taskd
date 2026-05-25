@@ -54,6 +54,15 @@ export interface Label {
 	color: string;
 }
 
+export interface TaskEvent {
+	id: string;
+	task_id: string;
+	kind: string;
+	message: string;
+	meta: string;
+	created_at: string;
+}
+
 export const api = {
 	projects: {
 		list: () => request<Project[]>('/projects'),
@@ -87,6 +96,9 @@ export const api = {
 		delete: (id: string) => request<void>(`/tasks/${id}`, { method: 'DELETE' }),
 		setLabels: (id: string, labelIds: string[]) =>
 			request<Task>(`/tasks/${id}/labels`, { method: 'PUT', body: JSON.stringify(labelIds) }),
+		events: (id: string) => request<TaskEvent[]>(`/tasks/${id}/events`),
+		addComment: (id: string, message: string) =>
+			request<TaskEvent>(`/tasks/${id}/events`, { method: 'POST', body: JSON.stringify({ message }) }),
 	},
 	labels: {
 		list: () => request<Label[]>('/labels'),

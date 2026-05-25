@@ -1,10 +1,12 @@
 use axum::routing::{delete, get, put};
 use axum::Router;
 
-use crate::handlers::{self, Db};
+use crate::handlers::{self, AppState};
 
-pub fn api_routes() -> Router<Db> {
+pub fn api_routes() -> Router<AppState> {
 	Router::new()
+		// SSE
+		.route("/api/events", get(handlers::events))
 		// Projects
 		.route("/api/projects", get(handlers::list_projects).post(handlers::create_project))
 		.route(
@@ -36,6 +38,11 @@ pub fn api_routes() -> Router<Db> {
 				.delete(handlers::delete_task),
 		)
 		.route("/api/tasks/{id}/labels", put(handlers::set_task_labels))
+		// Task Events
+		.route(
+			"/api/tasks/{id}/events",
+			get(handlers::list_task_events).post(handlers::create_task_event),
+		)
 		// Labels
 		.route("/api/labels", get(handlers::list_labels).post(handlers::create_label))
 		.route("/api/labels/{id}", delete(handlers::delete_label))

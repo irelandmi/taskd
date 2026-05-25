@@ -542,6 +542,66 @@ button.danger:hover {
 	flex: 1;
 }
 
+/* ─── Activity log ─────────────────────────────────────────── */
+
+.activity-log {
+	margin-top: var(--space-2xl);
+	max-width: 600px;
+}
+
+.activity-log h2 {
+	font-size: var(--fs-base);
+	letter-spacing: var(--ls-wide);
+	margin-bottom: var(--space-lg);
+	padding-bottom: var(--space-md);
+	border-bottom: var(--border-width) solid var(--border);
+	text-shadow: 0 0 6px var(--overlay-glow);
+}
+
+.log-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-sm);
+}
+
+.log-entry {
+	display: flex;
+	gap: var(--space-md);
+	align-items: baseline;
+	padding: var(--space-sm) var(--space-md);
+	border-left: 2px solid var(--border);
+	font-size: var(--fs-sm);
+}
+
+.log-entry.event-comment {
+	border-left-color: var(--text-accent);
+}
+.log-entry.event-status_change {
+	border-left-color: var(--cyan);
+}
+.log-entry.event-created {
+	border-left-color: var(--ok);
+}
+.log-entry.event-assigned {
+	border-left-color: var(--warn);
+}
+
+.log-time {
+	color: var(--text-muted);
+	font-size: var(--fs-xs);
+	flex-shrink: 0;
+	min-width: 130px;
+}
+
+.event-kind-badge {
+	font-size: var(--fs-xs);
+	flex-shrink: 0;
+}
+
+.log-message {
+	color: var(--text-primary);
+}
+
 /* ─── Scanline effect on page ──────────────────────────────── */
 
 body::before {

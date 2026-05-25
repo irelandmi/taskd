@@ -253,5 +253,24 @@ export async function taskBoard(params: Record<string, string>): Promise<HTMLEle
 	}
 
 	await load();
+
+	// SSE live updates
+	const evtSource = new EventSource('/api/events');
+	evtSource.onmessage = (e) => {
+		try {
+			const data = JSON.parse(e.data);
+			if (!data.project_id || data.project_id === projectId) {
+				load();
+			}
+		} catch {}
+	};
+
+	// Cleanup on navigation
+	const cleanup = () => {
+		evtSource.close();
+		window.removeEventListener('hashchange', cleanup);
+	};
+	window.addEventListener('hashchange', cleanup);
+
 	return container;
 }

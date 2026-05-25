@@ -84,11 +84,20 @@ impl Database {
 			self.conn.execute_batch(SCHEMA)?;
 			self.conn.pragma_update(None, "user_version", 1)?;
 		}
-		// Future migrations:
-		// if version < 2 {
-		//     self.conn.execute_batch("ALTER TABLE ...")?;
-		//     self.conn.pragma_update(None, "user_version", 2)?;
-		// }
+		if version < 2 {
+			self.conn.execute_batch("
+				CREATE TABLE task_events (
+					id         TEXT PRIMARY KEY,
+					task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+					kind       TEXT NOT NULL CHECK(kind IN ('comment', 'status_change', 'created', 'updated', 'assigned')),
+					message    TEXT NOT NULL DEFAULT '',
+					meta       TEXT NOT NULL DEFAULT '{}',
+					created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+				);
+				CREATE INDEX idx_task_events_task ON task_events(task_id);
+			")?;
+			self.conn.pragma_update(None, "user_version", 2)?;
+		}
 		Ok(())
 	}
 }

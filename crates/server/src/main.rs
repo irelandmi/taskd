@@ -4,10 +4,13 @@ mod routes;
 use std::sync::{Arc, Mutex};
 
 use clap::Parser;
+use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 
 use taskd_core::db::Database;
+
+use handlers::AppState;
 
 #[derive(Parser)]
 #[command(name = "taskd-server")]
@@ -29,10 +32,13 @@ async fn main() {
 	let args = Args::parse();
 	let db = Database::open(&args.db).expect("failed to open database");
 	let db = Arc::new(Mutex::new(db));
+	let (tx, _) = broadcast::channel(256);
+
+	let state = AppState { db, tx };
 
 	let mut app = routes::api_routes()
 		.layer(CorsLayer::permissive())
-		.with_state(db);
+		.with_state(state);
 
 	if let Some(ref dir) = args.static_dir {
 		let index = format!("{dir}/index.html");

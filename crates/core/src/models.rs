@@ -46,6 +46,16 @@ pub struct Label {
 	pub color: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskEvent {
+	pub id: String,
+	pub task_id: String,
+	pub kind: String,
+	pub message: String,
+	pub meta: String,
+	pub created_at: String,
+}
+
 // Input types for creation/updates
 
 #[derive(Debug, Deserialize)]
@@ -120,6 +130,11 @@ pub struct CreateLabel {
 
 fn default_color() -> String {
 	"#6b7280".to_string()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTaskEvent {
+	pub message: String,
 }
 
 #[derive(Debug, Deserialize, Default)]

@@ -1,4 +1,4 @@
-import { api, type Task } from '../api';
+import { api, type Task, type TaskEvent } from '../api';
 import { navigate } from '../router';
 import { el } from '../dom';
 
@@ -170,5 +170,66 @@ export async function taskDetail(params: Record<string, string>): Promise<HTMLEl
 	});
 
 	container.append(form);
+
+	// --- Activity Log ---
+	const logSection = el('div', { class: 'activity-log' });
+	logSection.append(el('h2', {}, 'Activity'));
+
+	const logList = el('div', { class: 'log-list' });
+	logSection.append(logList);
+
+	function renderEvent(evt: TaskEvent) {
+		const kindClass = `event-${evt.kind}`;
+		const entry = el('div', { class: `log-entry ${kindClass}` },
+			el('span', { class: 'log-time' }, evt.created_at.replace('T', ' ').replace('Z', '')),
+			el('span', { class: `badge event-kind-badge` }, evt.kind),
+			el('span', { class: 'log-message' }, evt.message),
+		);
+		logList.append(entry);
+	}
+
+	const events = await api.tasks.events(task.id);
+	if (events.length === 0) {
+		logList.append(el('p', { class: 'empty' }, 'No activity yet.'));
+	} else {
+		events.forEach(renderEvent);
+	}
+
+	// Comment form
+	const commentForm = el('div', { class: 'inline-form', style: 'margin-top:8px' });
+	const commentInput = el('input', { type: 'text', placeholder: 'Add a comment...' }) as HTMLInputElement;
+	const commentBtn = el('button', { type: 'button' }, 'Comment');
+	commentForm.append(commentInput, commentBtn);
+	logSection.append(commentForm);
+
+	commentBtn.addEventListener('click', async () => {
+		const message = commentInput.value.trim();
+		if (!message) return;
+		const evt = await api.tasks.addComment(task.id, message);
+		commentInput.value = '';
+		if (logList.querySelector('.empty')) logList.replaceChildren();
+		renderEvent(evt);
+	});
+
+	container.append(logSection);
+
+	// SSE live updates
+	const evtSource = new EventSource('/api/events');
+	evtSource.onmessage = async (e) => {
+		try {
+			const data = JSON.parse(e.data);
+			if (data.task_id === task.id && data.type === 'task_event') {
+				const freshEvents = await api.tasks.events(task.id);
+				logList.replaceChildren();
+				freshEvents.forEach(renderEvent);
+			}
+		} catch {}
+	};
+	const cleanup = () => {
+		evtSource.close();
+		window.removeEventListener('hashchange', cleanup);
+	};
+	window.addEventListener('hashchange', cleanup);
+
 	return container;
 }
