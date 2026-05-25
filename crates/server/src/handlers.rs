@@ -243,6 +243,55 @@ pub async fn create_task_event(
 	Ok(Json(evt))
 }
 
+// --- Task Outputs ---
+
+pub async fn list_task_outputs(
+	State(state): State<AppState>,
+	Path(id): Path<String>,
+) -> R<Vec<TaskOutput>> {
+	let db = state.db.lock().unwrap();
+	Ok(Json(db.list_task_outputs(&id)?))
+}
+
+pub async fn create_task_output(
+	State(state): State<AppState>,
+	Path(id): Path<String>,
+	Json(input): Json<CreateTaskOutput>,
+) -> R<TaskOutput> {
+	let db = state.db.lock().unwrap();
+	let output = db.add_task_output(&id, input)?;
+	broadcast(&state.tx, "task_updated", None, Some(&id));
+	Ok(Json(output))
+}
+
+// --- Task Dependencies ---
+
+pub async fn add_dependency(
+	State(state): State<AppState>,
+	Path(id): Path<String>,
+	Json(body): Json<AddDependencyBody>,
+) -> std::result::Result<StatusCode, AppError> {
+	let db = state.db.lock().unwrap();
+	db.add_dependency(&id, &body.depends_on)?;
+	broadcast(&state.tx, "task_updated", None, Some(&id));
+	Ok(StatusCode::CREATED)
+}
+
+pub async fn remove_dependency(
+	State(state): State<AppState>,
+	Path((id, dep_id)): Path<(String, String)>,
+) -> std::result::Result<StatusCode, AppError> {
+	let db = state.db.lock().unwrap();
+	db.remove_dependency(&id, &dep_id)?;
+	broadcast(&state.tx, "task_updated", None, Some(&id));
+	Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(serde::Deserialize)]
+pub struct AddDependencyBody {
+	pub depends_on: String,
+}
+
 // --- Labels ---
 
 pub async fn list_labels(State(state): State<AppState>) -> R<Vec<Label>> {

@@ -2,12 +2,13 @@ import { api, type Task, type Epic, type Project } from '../api';
 import { navigate } from '../router';
 import { el } from '../dom';
 
-const STATUSES = ['todo', 'in_progress', 'done', 'cancelled'] as const;
+const STATUSES = ['todo', 'in_progress', 'done', 'cancelled', 'blocked'] as const;
 const STATUS_LABELS: Record<string, string> = {
 	todo: 'To Do',
 	in_progress: 'In Progress',
 	done: 'Done',
 	cancelled: 'Cancelled',
+	blocked: 'Blocked',
 };
 
 const PRIORITY_CLASSES: Record<string, string> = {

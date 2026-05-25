@@ -35,6 +35,10 @@ pub struct Task {
 	pub labels: Vec<Label>,
 	#[serde(default)]
 	pub children: Vec<Task>,
+	#[serde(default)]
+	pub outputs: Vec<TaskOutput>,
+	#[serde(default)]
+	pub dependencies: Vec<String>,
 	pub created_at: String,
 	pub updated_at: String,
 }
@@ -54,6 +58,24 @@ pub struct TaskEvent {
 	pub message: String,
 	pub meta: String,
 	pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskOutput {
+	pub id: String,
+	pub task_id: String,
+	pub kind: String,
+	pub reference: String,
+	pub label: String,
+	pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTaskOutput {
+	pub kind: String,
+	pub reference: String,
+	#[serde(default)]
+	pub label: String,
 }
 
 // Input types for creation/updates

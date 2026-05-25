@@ -44,8 +44,19 @@ export interface Task {
 	assignee: string | null;
 	labels: Label[];
 	children: Task[];
+	outputs: TaskOutput[];
+	dependencies: string[];
 	created_at: string;
 	updated_at: string;
+}
+
+export interface TaskOutput {
+	id: string;
+	task_id: string;
+	kind: string;
+	reference: string;
+	label: string;
+	created_at: string;
 }
 
 export interface Label {
@@ -99,6 +110,13 @@ export const api = {
 		events: (id: string) => request<TaskEvent[]>(`/tasks/${id}/events`),
 		addComment: (id: string, message: string) =>
 			request<TaskEvent>(`/tasks/${id}/events`, { method: 'POST', body: JSON.stringify({ message }) }),
+		outputs: (id: string) => request<TaskOutput[]>(`/tasks/${id}/outputs`),
+		addOutput: (id: string, data: { kind: string; reference: string; label?: string }) =>
+			request<TaskOutput>(`/tasks/${id}/outputs`, { method: 'POST', body: JSON.stringify(data) }),
+		addDependency: (id: string, dependsOn: string) =>
+			request<void>(`/tasks/${id}/dependencies`, { method: 'POST', body: JSON.stringify({ depends_on: dependsOn }) }),
+		removeDependency: (id: string, depId: string) =>
+			request<void>(`/tasks/${id}/dependencies/${depId}`, { method: 'DELETE' }),
 	},
 	labels: {
 		list: () => request<Label[]>('/labels'),

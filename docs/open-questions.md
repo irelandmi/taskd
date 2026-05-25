@@ -16,13 +16,13 @@ Unresolved design decisions and things to figure out.
 
 ## Schema & Data Model
 
-- **Dependency cycles**: If we add task dependencies, how do we prevent cycles? (A depends on B, B depends on A). Enforce at insert time with a cycle check? Or trust the planner?
+- ~~**Dependency cycles**: If we add task dependencies, how do we prevent cycles?~~ **Resolved**: Cycle detection enforced at insert time via graph traversal. Circular dependencies are rejected with an error.
 
 - **Cross-project dependencies**: Can a task in project A depend on a task in project B? Probably not for v1, but worth considering for monorepo scenarios.
 
-- **Blocked status UX**: If we add `blocked`, how does it appear on the kanban board? Fifth column? Badge overlay on the in_progress column? Separate section?
+- ~~**Blocked status UX**: If we add `blocked`, how does it appear on the kanban board?~~ **Resolved**: Blocked appears as a fifth column on the kanban board with a yellow/warn color scheme.
 
-- **Spike findings format**: Should spike output be structured (JSON schema for findings) or free-text? Structured is machine-readable for the coordinator, free-text is easier to produce.
+- ~~**Spike findings format**: Should spike output be structured or free-text?~~ **Resolved**: Task outputs are typed references (`file`, `commit`, `url`, `text`) with an optional label. Flexible enough for structured or free-form use.
 
 ## Operational
 

@@ -236,7 +236,7 @@ button.danger:hover {
 
 .board {
 	display: grid;
-	grid-template-columns: repeat(4, 1fr);
+	grid-template-columns: repeat(5, 1fr);
 	gap: var(--space-lg);
 	min-height: 100px;
 }
@@ -521,6 +521,7 @@ button.danger:hover {
 .status-in_progress { background: var(--overlay-cyan); color: var(--cyan); }
 .status-done        { background: var(--overlay-ok); color: var(--ok); }
 .status-cancelled   { background: var(--overlay-err); color: var(--err); }
+.status-blocked     { background: var(--overlay-warn); color: var(--warn); }
 
 /* ─── Kind badges ──────────────────────────────────────────── */
 
@@ -540,6 +541,72 @@ button.danger:hover {
 .timeline-task-title {
 	font-size: var(--fs-sm);
 	flex: 1;
+}
+
+/* ─── Outputs & Dependencies ───────────────────────────────── */
+
+.outputs-section,
+.dependencies-section {
+	margin-top: var(--space-2xl);
+	max-width: 600px;
+}
+
+.outputs-section h2,
+.dependencies-section h2 {
+	font-size: var(--fs-base);
+	letter-spacing: var(--ls-wide);
+	margin-bottom: var(--space-lg);
+	padding-bottom: var(--space-md);
+	border-bottom: var(--border-width) solid var(--border);
+	text-shadow: 0 0 6px var(--overlay-glow);
+}
+
+.output-list,
+.dependency-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-sm);
+}
+
+.output-entry {
+	display: flex;
+	gap: var(--space-md);
+	align-items: center;
+	padding: var(--space-sm) var(--space-md);
+	border-left: 2px solid var(--border);
+	font-size: var(--fs-sm);
+}
+
+.output-entry.output-file   { border-left-color: var(--text-accent); }
+.output-entry.output-commit { border-left-color: var(--cyan); }
+.output-entry.output-url    { border-left-color: var(--purple); }
+.output-entry.output-text   { border-left-color: var(--text-muted); }
+
+.output-ref {
+	color: var(--text-primary);
+	word-break: break-all;
+}
+
+.output-label {
+	color: var(--text-muted);
+	font-size: var(--fs-xs);
+}
+
+.dependency-row {
+	display: flex;
+	gap: var(--space-md);
+	align-items: center;
+	padding: var(--space-sm) var(--space-md);
+	border-left: 2px solid var(--border);
+	font-size: var(--fs-sm);
+}
+
+.dependency-row a {
+	color: var(--text-primary);
+	text-decoration: none;
+}
+.dependency-row a:hover {
+	color: var(--text-accent);
 }
 
 /* ─── Activity log ─────────────────────────────────────────── */

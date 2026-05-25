@@ -1,8 +1,8 @@
-import { api, type Task, type TaskEvent } from '../api';
+import { api, type Task, type TaskEvent, type TaskOutput } from '../api';
 import { navigate } from '../router';
 import { el } from '../dom';
 
-const STATUSES = ['todo', 'in_progress', 'done', 'cancelled'];
+const STATUSES = ['todo', 'in_progress', 'done', 'cancelled', 'blocked'];
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 const KINDS = ['story', 'task', 'spike', 'bug', 'chore'];
 
@@ -170,6 +170,94 @@ export async function taskDetail(params: Record<string, string>): Promise<HTMLEl
 	});
 
 	container.append(form);
+
+	// --- Outputs Section ---
+	const outputSection = el('div', { class: 'outputs-section' });
+	outputSection.append(el('h2', {}, 'Outputs'));
+
+	const outputList = el('div', { class: 'output-list' });
+	outputSection.append(outputList);
+
+	function renderOutput(o: TaskOutput) {
+		const kindIcon = { file: '\u{1F4C4}', commit: '\u{1F517}', url: '\u{1F310}', text: '\u{1F4DD}' }[o.kind] || '';
+		const entry = el('div', { class: `output-entry output-${o.kind}` },
+			el('span', { class: 'badge' }, o.kind),
+			el('span', { class: 'output-ref' }, `${kindIcon} ${o.reference}`),
+			o.label ? el('span', { class: 'output-label' }, o.label) : el('span', {}),
+		);
+		outputList.append(entry);
+	}
+
+	if (task.outputs.length === 0) {
+		outputList.append(el('p', { class: 'empty' }, 'No outputs yet.'));
+	} else {
+		task.outputs.forEach(renderOutput);
+	}
+
+	const outputForm = el('div', { class: 'inline-form', style: 'margin-top:8px' });
+	const outputKind = el('select', {}) as HTMLSelectElement;
+	['file', 'commit', 'url', 'text'].forEach(k => {
+		outputKind.append(el('option', { value: k }, k));
+	});
+	const outputRef = el('input', { type: 'text', placeholder: 'Reference (path, SHA, URL, text)...' }) as HTMLInputElement;
+	const outputLabel = el('input', { type: 'text', placeholder: 'Label (optional)...' }) as HTMLInputElement;
+	const outputBtn = el('button', { type: 'button' }, 'Add Output');
+	outputForm.append(outputKind, outputRef, outputLabel, outputBtn);
+	outputSection.append(outputForm);
+
+	outputBtn.addEventListener('click', async () => {
+		const ref = outputRef.value.trim();
+		if (!ref) return;
+		const o = await api.tasks.addOutput(task.id, {
+			kind: outputKind.value,
+			reference: ref,
+			label: outputLabel.value.trim(),
+		});
+		outputRef.value = '';
+		outputLabel.value = '';
+		if (outputList.querySelector('.empty')) outputList.replaceChildren();
+		renderOutput(o);
+	});
+
+	container.append(outputSection);
+
+	// --- Dependencies Section ---
+	const depSection = el('div', { class: 'dependencies-section' });
+	depSection.append(el('h2', {}, 'Dependencies'));
+
+	const depList = el('div', { class: 'dependency-list' });
+	depSection.append(depList);
+
+	async function loadDependencies() {
+		depList.replaceChildren();
+		if (task.dependencies.length === 0) {
+			depList.append(el('p', { class: 'empty' }, 'No dependencies.'));
+			return;
+		}
+		for (const depId of task.dependencies) {
+			try {
+				const dep = await api.tasks.get(depId);
+				const row = el('div', { class: 'dependency-row' },
+					el('span', { class: `badge status-${dep.status}` }, dep.status),
+					el('a', { href: `#/tasks/${dep.id}` }, dep.title),
+					el('span', { class: 'task-id' }, dep.id),
+				);
+				const removeBtn = el('button', { type: 'button', class: 'danger', style: 'padding:2px 6px;font-size:11px' }, 'x');
+				removeBtn.addEventListener('click', async () => {
+					await api.tasks.removeDependency(task.id, dep.id);
+					task.dependencies = task.dependencies.filter(d => d !== dep.id);
+					loadDependencies();
+				});
+				row.append(removeBtn);
+				depList.append(row);
+			} catch {
+				depList.append(el('div', { class: 'dependency-row' }, el('span', {}, depId)));
+			}
+		}
+	}
+	await loadDependencies();
+
+	container.append(depSection);
 
 	// --- Activity Log ---
 	const logSection = el('div', { class: 'activity-log' });

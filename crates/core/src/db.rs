@@ -32,7 +32,7 @@ CREATE TABLE tasks (
 	title       TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
 	status      TEXT NOT NULL DEFAULT 'todo'
-	            CHECK(status IN ('todo', 'in_progress', 'done', 'cancelled')),
+	            CHECK(status IN ('todo', 'in_progress', 'done', 'cancelled', 'blocked')),
 	priority    TEXT NOT NULL DEFAULT 'medium'
 	            CHECK(priority IN ('low', 'medium', 'high', 'urgent')),
 	assignee    TEXT,
@@ -97,6 +97,26 @@ impl Database {
 				CREATE INDEX idx_task_events_task ON task_events(task_id);
 			")?;
 			self.conn.pragma_update(None, "user_version", 2)?;
+		}
+		if version < 3 {
+			self.conn.execute_batch("
+				CREATE TABLE task_outputs (
+					id         TEXT PRIMARY KEY,
+					task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+					kind       TEXT NOT NULL CHECK(kind IN ('file', 'commit', 'url', 'text')),
+					reference  TEXT NOT NULL,
+					label      TEXT NOT NULL DEFAULT '',
+					created_at TEXT NOT NULL
+				);
+				CREATE INDEX idx_task_outputs_task ON task_outputs(task_id);
+
+				CREATE TABLE task_dependencies (
+					task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+					depends_on TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+					PRIMARY KEY (task_id, depends_on)
+				);
+			")?;
+			self.conn.pragma_update(None, "user_version", 3)?;
 		}
 		Ok(())
 	}

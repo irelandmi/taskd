@@ -54,6 +54,8 @@ fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
 		assignee: row.get(9)?,
 		labels: vec![],
 		children: vec![],
+		outputs: vec![],
+		dependencies: vec![],
 		created_at: row.get(10)?,
 		updated_at: row.get(11)?,
 	})
@@ -353,6 +355,8 @@ impl Database {
 			child.labels = self.get_task_labels(&child.id)?;
 		}
 		task.children = children;
+		task.outputs = self.list_task_outputs(&task.id)?;
+		task.dependencies = self.get_task_dependency_ids(&task.id)?;
 		Ok(task)
 	}
 
@@ -524,6 +528,132 @@ impl Database {
 			})
 		})?;
 		rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+	}
+
+	// --- Task Outputs ---
+
+	pub fn add_task_output(&self, task_id: &str, input: CreateTaskOutput) -> Result<TaskOutput> {
+		let task = self.get_task(task_id)?;
+		let id = new_id();
+		let ts = now();
+		self.conn.execute(
+			"INSERT INTO task_outputs (id, task_id, kind, reference, label, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+			params![id, task.id, input.kind, input.reference, input.label, ts],
+		)?;
+		Ok(TaskOutput { id, task_id: task.id, kind: input.kind, reference: input.reference, label: input.label, created_at: ts })
+	}
+
+	pub fn list_task_outputs(&self, task_id: &str) -> Result<Vec<TaskOutput>> {
+		let mut stmt = self.conn.prepare(
+			"SELECT id, task_id, kind, reference, label, created_at FROM task_outputs WHERE task_id = ?1 ORDER BY created_at",
+		)?;
+		let rows = stmt.query_map(params![task_id], |row| {
+			Ok(TaskOutput {
+				id: row.get(0)?,
+				task_id: row.get(1)?,
+				kind: row.get(2)?,
+				reference: row.get(3)?,
+				label: row.get(4)?,
+				created_at: row.get(5)?,
+			})
+		})?;
+		rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+	}
+
+	// --- Task Dependencies ---
+
+	pub fn add_dependency(&self, task_id: &str, depends_on_id: &str) -> Result<()> {
+		let task = self.get_task(task_id)?;
+		let dep = self.get_task(depends_on_id)?;
+		if task.id == dep.id {
+			return Err(Error::InvalidInput("a task cannot depend on itself".into()));
+		}
+		// Cycle detection: walk from dep to see if task is reachable
+		if self.has_path(&dep.id, &task.id)? {
+			return Err(Error::InvalidInput("circular dependency".into()));
+		}
+		self.conn.execute(
+			"INSERT OR IGNORE INTO task_dependencies (task_id, depends_on) VALUES (?1, ?2)",
+			params![task.id, dep.id],
+		)?;
+		Ok(())
+	}
+
+	pub fn remove_dependency(&self, task_id: &str, depends_on_id: &str) -> Result<()> {
+		let task = self.get_task(task_id)?;
+		let dep = self.get_task(depends_on_id)?;
+		self.conn.execute(
+			"DELETE FROM task_dependencies WHERE task_id = ?1 AND depends_on = ?2",
+			params![task.id, dep.id],
+		)?;
+		Ok(())
+	}
+
+	pub fn list_dependencies(&self, task_id: &str) -> Result<Vec<Task>> {
+		let task = self.get_task(task_id)?;
+		let sql = format!(
+			"SELECT {TASK_COLUMNS} FROM tasks WHERE id IN (SELECT depends_on FROM task_dependencies WHERE task_id = ?1) ORDER BY created_at"
+		);
+		let mut stmt = self.conn.prepare(&sql)?;
+		let rows = stmt.query_map(params![task.id], row_to_task)?;
+		let mut tasks: Vec<Task> = rows.collect::<std::result::Result<Vec<_>, _>>()?;
+		for t in &mut tasks {
+			t.labels = self.get_task_labels(&t.id)?;
+		}
+		Ok(tasks)
+	}
+
+	pub fn list_dependents(&self, task_id: &str) -> Result<Vec<Task>> {
+		let task = self.get_task(task_id)?;
+		let sql = format!(
+			"SELECT {TASK_COLUMNS} FROM tasks WHERE id IN (SELECT task_id FROM task_dependencies WHERE depends_on = ?1) ORDER BY created_at"
+		);
+		let mut stmt = self.conn.prepare(&sql)?;
+		let rows = stmt.query_map(params![task.id], row_to_task)?;
+		let mut tasks: Vec<Task> = rows.collect::<std::result::Result<Vec<_>, _>>()?;
+		for t in &mut tasks {
+			t.labels = self.get_task_labels(&t.id)?;
+		}
+		Ok(tasks)
+	}
+
+	pub fn is_task_ready(&self, task_id: &str) -> Result<bool> {
+		let task = self.get_task(task_id)?;
+		let count: i64 = self.conn.query_row(
+			"SELECT COUNT(*) FROM task_dependencies td JOIN tasks t ON t.id = td.depends_on WHERE td.task_id = ?1 AND t.status != 'done'",
+			params![task.id],
+			|row| row.get(0),
+		)?;
+		Ok(count == 0)
+	}
+
+	fn get_task_dependency_ids(&self, task_id: &str) -> Result<Vec<String>> {
+		let mut stmt = self.conn.prepare(
+			"SELECT depends_on FROM task_dependencies WHERE task_id = ?1",
+		)?;
+		let rows = stmt.query_map(params![task_id], |row| row.get::<_, String>(0))?;
+		rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+	}
+
+	fn has_path(&self, from: &str, to: &str) -> Result<bool> {
+		let mut visited = std::collections::HashSet::new();
+		let mut stack = vec![from.to_string()];
+		while let Some(current) = stack.pop() {
+			if current == to {
+				return Ok(true);
+			}
+			if !visited.insert(current.clone()) {
+				continue;
+			}
+			let mut stmt = self.conn.prepare(
+				"SELECT depends_on FROM task_dependencies WHERE task_id = ?1",
+			)?;
+			let rows = stmt.query_map(params![current], |row| row.get::<_, String>(0))?;
+			for dep in rows {
+				stack.push(dep?);
+			}
+		}
+		Ok(false)
 	}
 
 	fn get_task_labels(&self, task_id: &str) -> Result<Vec<Label>> {
@@ -834,6 +964,151 @@ mod tests {
 			labels: vec![],
 		}).unwrap();
 		assert_eq!(t.epic_id, e.id);
+	}
+
+	#[test]
+	fn test_blocked_status() {
+		let db = test_db();
+		let (p, e) = create_project_and_epic(&db);
+		let t = db.create_task(&p.id, CreateTask {
+			title: "Blocked task".into(),
+			description: "".into(),
+			epic_id: Some(e.id.clone()),
+			parent_id: None,
+			kind: "task".into(),
+			priority: "medium".into(),
+			assignee: None,
+			labels: vec![],
+		}).unwrap();
+		let t = db.update_task(&t.id, UpdateTask { status: Some("blocked".into()), ..Default::default() }).unwrap();
+		assert_eq!(t.status, "blocked");
+	}
+
+	#[test]
+	fn test_task_outputs() {
+		let db = test_db();
+		let (p, e) = create_project_and_epic(&db);
+		let t = db.create_task(&p.id, CreateTask {
+			title: "Task".into(),
+			description: "".into(),
+			epic_id: Some(e.id.clone()),
+			parent_id: None,
+			kind: "task".into(),
+			priority: "medium".into(),
+			assignee: None,
+			labels: vec![],
+		}).unwrap();
+
+		let o = db.add_task_output(&t.id, CreateTaskOutput {
+			kind: "file".into(),
+			reference: "src/auth.rs".into(),
+			label: "auth module".into(),
+		}).unwrap();
+		assert_eq!(o.kind, "file");
+		assert_eq!(o.reference, "src/auth.rs");
+
+		let outputs = db.list_task_outputs(&t.id).unwrap();
+		assert_eq!(outputs.len(), 1);
+
+		// Verify get_task includes outputs
+		let fetched = db.get_task(&t.id).unwrap();
+		assert_eq!(fetched.outputs.len(), 1);
+
+		// Cascade delete
+		db.delete_task(&t.id).unwrap();
+		let outputs = db.list_task_outputs(&o.task_id).unwrap();
+		assert!(outputs.is_empty());
+	}
+
+	#[test]
+	fn test_dependencies() {
+		let db = test_db();
+		let (p, e) = create_project_and_epic(&db);
+		let a = db.create_task(&p.id, CreateTask {
+			title: "A".into(),
+			description: "".into(),
+			epic_id: Some(e.id.clone()),
+			parent_id: None,
+			kind: "task".into(),
+			priority: "medium".into(),
+			assignee: None,
+			labels: vec![],
+		}).unwrap();
+		let b = db.create_task(&p.id, CreateTask {
+			title: "B".into(),
+			description: "".into(),
+			epic_id: Some(e.id.clone()),
+			parent_id: None,
+			kind: "task".into(),
+			priority: "medium".into(),
+			assignee: None,
+			labels: vec![],
+		}).unwrap();
+
+		// A depends on B
+		db.add_dependency(&a.id, &b.id).unwrap();
+
+		// A is not ready (B is not done)
+		assert!(!db.is_task_ready(&a.id).unwrap());
+
+		// get_task includes dependencies
+		let fetched = db.get_task(&a.id).unwrap();
+		assert_eq!(fetched.dependencies.len(), 1);
+		assert_eq!(fetched.dependencies[0], b.id);
+
+		// list_dependencies
+		let deps = db.list_dependencies(&a.id).unwrap();
+		assert_eq!(deps.len(), 1);
+		assert_eq!(deps[0].id, b.id);
+
+		// list_dependents (reverse)
+		let dependents = db.list_dependents(&b.id).unwrap();
+		assert_eq!(dependents.len(), 1);
+		assert_eq!(dependents[0].id, a.id);
+
+		// Mark B done -> A is ready
+		db.update_task(&b.id, UpdateTask { status: Some("done".into()), ..Default::default() }).unwrap();
+		assert!(db.is_task_ready(&a.id).unwrap());
+
+		// Remove dependency
+		db.remove_dependency(&a.id, &b.id).unwrap();
+		let fetched = db.get_task(&a.id).unwrap();
+		assert!(fetched.dependencies.is_empty());
+	}
+
+	#[test]
+	fn test_circular_dependency_rejected() {
+		let db = test_db();
+		let (p, e) = create_project_and_epic(&db);
+		let a = db.create_task(&p.id, CreateTask {
+			title: "A".into(),
+			description: "".into(),
+			epic_id: Some(e.id.clone()),
+			parent_id: None,
+			kind: "task".into(),
+			priority: "medium".into(),
+			assignee: None,
+			labels: vec![],
+		}).unwrap();
+		let b = db.create_task(&p.id, CreateTask {
+			title: "B".into(),
+			description: "".into(),
+			epic_id: Some(e.id.clone()),
+			parent_id: None,
+			kind: "task".into(),
+			priority: "medium".into(),
+			assignee: None,
+			labels: vec![],
+		}).unwrap();
+
+		db.add_dependency(&a.id, &b.id).unwrap();
+		let result = db.add_dependency(&b.id, &a.id);
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("circular dependency"));
+
+		// Self-dependency
+		let result = db.add_dependency(&a.id, &a.id);
+		assert!(result.is_err());
 	}
 
 	#[test]

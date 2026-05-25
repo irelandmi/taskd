@@ -38,6 +38,14 @@ pub fn api_routes() -> Router<AppState> {
 				.delete(handlers::delete_task),
 		)
 		.route("/api/tasks/{id}/labels", put(handlers::set_task_labels))
+		// Task Outputs
+		.route(
+			"/api/tasks/{id}/outputs",
+			get(handlers::list_task_outputs).post(handlers::create_task_output),
+		)
+		// Task Dependencies
+		.route("/api/tasks/{id}/dependencies", axum::routing::post(handlers::add_dependency))
+		.route("/api/tasks/{id}/dependencies/{dep_id}", delete(handlers::remove_dependency))
 		// Task Events
 		.route(
 			"/api/tasks/{id}/events",

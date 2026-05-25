@@ -135,6 +135,28 @@ enum TaskCmd {
 		#[arg(long, name = "type")]
 		kind: Option<String>,
 	},
+	Output {
+		id: String,
+		#[arg(long)]
+		kind: String,
+		#[arg(long = "ref")]
+		reference: String,
+		#[arg(long, default_value = "")]
+		label: String,
+	},
+	Outputs {
+		id: String,
+	},
+	Block {
+		id: String,
+		#[arg(long)]
+		by: String,
+	},
+	Unblock {
+		id: String,
+		#[arg(long)]
+		from: String,
+	},
 	Done {
 		id: String,
 	},
@@ -335,6 +357,23 @@ fn run(db: &Database, cmd: Commands) -> taskd_core::error::Result<()> {
 						println!("  {} [{}] {} ({})", child.id, child.kind, child.title, child.status);
 					}
 				}
+				if !t.outputs.is_empty() {
+					println!("outputs:");
+					for o in &t.outputs {
+						let label_str = if o.label.is_empty() { String::new() } else { format!(" ({})", o.label) };
+						println!("  [{}] {}{}", o.kind, o.reference, label_str);
+					}
+				}
+				if !t.dependencies.is_empty() {
+					println!("dependencies:");
+					for dep_id in &t.dependencies {
+						if let Ok(dep) = db.get_task(dep_id) {
+							println!("  {} {} ({})", dep.id, dep.title, dep.status);
+						} else {
+							println!("  {}", dep_id);
+						}
+					}
+				}
 				println!("created:     {}", t.created_at);
 				println!("updated:     {}", t.updated_at);
 			}
@@ -349,6 +388,29 @@ fn run(db: &Database, cmd: Commands) -> taskd_core::error::Result<()> {
 					kind,
 				})?;
 				println!("updated {} {} ({})", t.kind, t.title, t.id);
+			}
+			TaskCmd::Output { id, kind, reference, label } => {
+				let output = db.add_task_output(&id, CreateTaskOutput { kind, reference, label })?;
+				println!("added {} output {} ({})", output.kind, output.reference, output.id);
+			}
+			TaskCmd::Outputs { id } => {
+				let outputs = db.list_task_outputs(&id)?;
+				if outputs.is_empty() {
+					println!("no outputs");
+				} else {
+					for o in outputs {
+						let label_str = if o.label.is_empty() { String::new() } else { format!(" ({})", o.label) };
+						println!("[{}] {}: {}{}", o.kind, o.id, o.reference, label_str);
+					}
+				}
+			}
+			TaskCmd::Block { id, by } => {
+				db.add_dependency(&id, &by)?;
+				println!("blocked {} by {}", id, by);
+			}
+			TaskCmd::Unblock { id, from } => {
+				db.remove_dependency(&id, &from)?;
+				println!("unblocked {} from {}", id, from);
 			}
 			TaskCmd::Done { id } => {
 				db.update_task(&id, UpdateTask { status: Some("done".into()), ..Default::default() })?;

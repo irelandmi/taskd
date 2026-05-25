@@ -43,50 +43,29 @@ Watches the board and handles feedback loops:
 
 This role is optional for simple projects but essential for anything with unknowns (spikes) or multiple executors.
 
-## Schema Gaps
+## Schema Support
 
-### Task dependencies
+### Task dependencies (implemented)
 
-**Problem**: No way to express "task B can't start until task A is done." Without this, a pool of executors will start work out of order — e.g., building the API before the spike that determines the API design is complete.
+The `task_dependencies` table expresses ordering constraints between tasks. A task is **ready** when all its `depends_on` tasks have status `done`. Executors query for ready tasks only. Circular dependencies are rejected at insert time via graph traversal.
 
-**Solution**: New `task_dependencies` join table:
+### Task outputs (implemented)
 
-```sql
-CREATE TABLE task_dependencies (
-    task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    depends_on TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    PRIMARY KEY (task_id, depends_on)
-);
-```
+The `task_outputs` table stores lightweight references (file paths, commit SHAs, URLs, free text) produced by a task. This solves the spike output problem — a spike executor records its findings as outputs, and the coordinator can read them to create follow-up tasks.
 
-A task is **ready** when all its `depends_on` tasks have status `done`. Executors query for ready tasks only.
+### Blocked status (implemented)
 
-### Task claiming / assignment atomicity
+Tasks support a `blocked` status. Agents set status to `blocked` and log a comment explaining why. The coordinator or human can unblock. Blocked tasks appear in a dedicated column on the kanban board.
 
-**Problem**: Two executors could both see a `todo` task and both set it to `in_progress`. Status update isn't atomic — it's a read-then-write race.
+### Remaining gap: task claiming atomicity
 
-**Options**:
+Two executors could both see a `todo` task and both set it to `in_progress`. Status update isn't atomic — it's a read-then-write race.
 
 | Approach | How it works | Trade-off |
 |----------|-------------|-----------|
 | Optimistic locking | Add `version` column. UPDATE includes `WHERE version = ?`. If 0 rows affected, retry. | Simple, no extra tables. Retry logic needed. |
 | Assignee as lock | Only unassigned + todo tasks are claimable. Assigning is the claim. | Intuitive but same atomicity issue. |
 | Queue table | Separate `task_queue` with `claimed_by` and `claimed_at`. Stale claims reclaimable after timeout. | Most robust. Handles agent crashes. More complex. |
-
-### Task blocking
-
-**Problem**: No way for an agent to say "I'm stuck, need human input." Current statuses are `todo`, `in_progress`, `done`, `cancelled`.
-
-**Solution**: Add `blocked` to the status CHECK constraint. Agents set status to `blocked` and log a comment explaining why. The coordinator or human can unblock.
-
-### Spike output
-
-**Problem**: A spike's output (research findings, decisions, recommendations) has nowhere structured to go. It lives as comments in the activity log.
-
-**Options**:
-- Use the task `description` field — spike executor updates it with findings
-- Add a `resolution` or `output` column to tasks
-- Keep it in task events with a special kind (`finding` or `resolution`)
 
 ## The Execution Loop
 

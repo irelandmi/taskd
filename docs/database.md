@@ -53,7 +53,7 @@ Work items. Can be nested one level (parent → children).
 | kind | TEXT | NOT NULL DEFAULT 'task', CHECK IN ('story', 'task', 'spike', 'bug', 'chore') | Work item type |
 | title | TEXT | NOT NULL | Task title |
 | description | TEXT | NOT NULL DEFAULT '' | Optional description |
-| status | TEXT | NOT NULL DEFAULT 'todo', CHECK IN ('todo', 'in_progress', 'done', 'cancelled') | Task status |
+| status | TEXT | NOT NULL DEFAULT 'todo', CHECK IN ('todo', 'in_progress', 'done', 'cancelled', 'blocked') | Task status |
 | priority | TEXT | NOT NULL DEFAULT 'medium', CHECK IN ('low', 'medium', 'high', 'urgent') | Priority level |
 | assignee | TEXT | NULLABLE | Assigned user |
 | created_at | TEXT | NOT NULL | ISO 8601 timestamp |
@@ -84,6 +84,34 @@ Join table linking tasks to labels. Many-to-many.
 
 **Primary key:** (task_id, label_id)
 
+### task_outputs
+
+Lightweight references to outputs produced by a task (file paths, commit SHAs, URLs, free text).
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | TEXT | PRIMARY KEY | Human-readable ID |
+| task_id | TEXT | NOT NULL, FK → tasks(id) ON DELETE CASCADE | Parent task |
+| kind | TEXT | NOT NULL, CHECK IN ('file', 'commit', 'url', 'text') | Output type |
+| reference | TEXT | NOT NULL | File path, commit SHA, URL, or free text |
+| label | TEXT | NOT NULL DEFAULT '' | Optional human label |
+| created_at | TEXT | NOT NULL | ISO 8601 timestamp |
+
+**Indexes:** `idx_task_outputs_task` on `task_id`
+
+### task_dependencies
+
+Directed dependency graph between tasks. A task depends on another task being done before it is ready.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| task_id | TEXT | NOT NULL, FK → tasks(id) ON DELETE CASCADE | The blocked task |
+| depends_on | TEXT | NOT NULL, FK → tasks(id) ON DELETE CASCADE | The blocking task |
+
+**Primary key:** (task_id, depends_on)
+
+Cycle detection is enforced on insert — circular dependencies are rejected.
+
 ## Cascade Behavior
 
 Deleting a parent cascades to all children:
@@ -91,6 +119,7 @@ Deleting a parent cascades to all children:
 - Delete **project** → deletes its epics and tasks
 - Delete **epic** → deletes its tasks
 - Delete **task** → deletes its sub-tasks (children)
+- Delete **task** → deletes its outputs and dependency links
 - Delete **label** → removes it from all task_labels entries
 
 ## Relationships
@@ -98,7 +127,9 @@ Deleting a parent cascades to all children:
 ```
 projects 1──* epics 1──* tasks *──* labels
                           │
-                          └──* tasks (sub-tasks via parent_id)
+                          ├──* tasks (sub-tasks via parent_id)
+                          ├──* task_outputs
+                          └──* task_dependencies (task_id ──► depends_on)
 ```
 
 ## Transactions
@@ -115,7 +146,7 @@ Multi-statement mutations are wrapped in explicit transactions with rollback on 
 |---------|-------|
 | Journal mode | WAL |
 | Foreign keys | ON |
-| Schema version | Tracked via `PRAGMA user_version` (currently 1) |
+| Schema version | Tracked via `PRAGMA user_version` (currently 3) |
 | Default file | `taskd.db` |
 | Migrations | Incremental `if version < N` chain in `db.rs` |
 
@@ -142,6 +173,10 @@ Multi-statement mutations are wrapped in explicit transactions with rollback on 
 | GET | /api/labels | List all labels |
 | POST | /api/labels | Create a label |
 | DELETE | /api/labels/:id | Delete a label |
+| GET | /api/tasks/:id/outputs | List outputs for a task |
+| POST | /api/tasks/:id/outputs | Attach an output to a task |
+| POST | /api/tasks/:id/dependencies | Add a dependency |
+| DELETE | /api/tasks/:id/dependencies/:dep_id | Remove a dependency |
 
 ### Task List Filters
 
@@ -149,7 +184,7 @@ Multi-statement mutations are wrapped in explicit transactions with rollback on 
 
 | Parameter | Description |
 |-----------|-------------|
-| status | Filter by status (todo, in_progress, done, cancelled) |
+| status | Filter by status (todo, in_progress, done, cancelled, blocked) |
 | epic_id | Filter by epic |
 | assignee | Filter by assignee |
 | label | Filter by label name |
@@ -179,6 +214,10 @@ taskd task create --project <id> <title> [--epic <id>] [--kind <k>] [--parent <i
 taskd task show <id>
 taskd task update <id> [--title <t>] [--description <d>] [--status <s>] [--priority <p>] [--assignee <a>] [--epic <id>] [--kind <k>]
 taskd task done <id>
+taskd task output <id> --kind <kind> --ref <ref> [--label <label>]
+taskd task outputs <id>
+taskd task block <id> --by <dep_id>
+taskd task unblock <id> --from <dep_id>
 taskd task delete <id>
 
 taskd label list
@@ -188,5 +227,5 @@ taskd label delete <id>
 
 ## Testing
 
-- **Unit tests:** `cargo test --workspace` — 17 tests covering all CRUD, cascades, backlog behavior, prefix lookup, and ID generation
+- **Unit tests:** `cargo test --workspace` — 21 tests covering all CRUD, cascades, backlog behavior, prefix lookup, ID generation, task outputs, dependencies, and cycle detection
 - **E2E tests:** `./tests/cli_e2e.sh` — 35 tests exercising the full CLI against a temp database, covering every command, filters, cascades, sub-tasks, labels, and error cases

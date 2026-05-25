@@ -2,6 +2,9 @@
 name = "taskd-core"
 version = "0.1.0"
 edition = "2021"
+description = "Core library for taskd — lightweight project management for AI agent workflows"
+license = "MIT"
+authors = ["Isaac Ireland"]
 
 [dependencies]
 rusqlite = { version = "0.31", features = ["bundled"] }

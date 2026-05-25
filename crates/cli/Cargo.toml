@@ -2,6 +2,9 @@
 name = "taskd"
 version = "0.1.0"
 edition = "2021"
+description = "CLI for taskd — lightweight project management for AI agent workflows"
+license = "MIT"
+authors = ["Isaac Ireland"]
 
 [dependencies]
 taskd-core = { path = "../core" }
