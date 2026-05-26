@@ -2,20 +2,37 @@
 
 Lightweight project management tool built for AI agent workflows. SQLite backend, Rust CLI and API server, terminal-themed web UI with live SSE updates.
 
-## Quick Start
+## Prerequisites
+
+- [Rust](https://rustup.rs/) (stable)
+- [Node.js](https://nodejs.org/) (for the web UI)
+
+## Install
 
 ```bash
-# Build everything
-cargo build --workspace
+git clone git@github.com:irelandmi/taskd.git
+cd taskd
+
+# Install the CLI and server binaries
+cargo install --path crates/cli
+cargo install --path crates/server
 
 # Build the frontend
 cd frontend && npm install && npm run build && cd ..
+```
 
+This installs `taskd` and `taskd-server` to `~/.cargo/bin/`. No external dependencies — SQLite is compiled from source.
+
+## Quick Start
+
+```bash
 # Start the server with the web UI
-cargo run --bin taskd-server -- --port 3000 --static-dir frontend/dist
+taskd-server --port 3000 --static-dir frontend/dist
 
-# Or use the CLI directly
-cargo run --bin taskd -- project create "My Project"
+# Use the CLI
+taskd project create "My Project"
+taskd task create --project <id> "My first task"
+taskd task list --project <id>
 ```
 
 ## Architecture
